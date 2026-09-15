@@ -1,12 +1,10 @@
 import {
   createUserWithEmailAndPassword,
-  GoogleAuthProvider,
-  sendEmailVerification,
+  reload,
   signInWithEmailAndPassword,
-  signInWithPopup,
   signOut,
   updateProfile,
-  User,
+  type User,
 } from "firebase/auth";
 
 import {
@@ -18,289 +16,316 @@ import {
 
 import { auth, db } from "./firebase";
 
-const googleProvider = new GoogleAuthProvider();
-
-/**
+/*
  * ============================================================
- * USER RECORD
+ * CREATE / UPDATE USER RECORD
  * ============================================================
- *
- * Creates the main user document.
- *
- * IMPORTANT:
- * - Users cannot choose their role.
- * - Every newly created account starts as "student".
- * - Profile information is handled separately.
  */
-export async function createUserRecord(user: User) {
-  const userRef = doc(db, "users", user.uid);
 
-  const existingUser = await getDoc(userRef);
+export async function createUserRecord(
+  user: User,
+  data?: {
+    firstName?: string;
+    middleName?: string;
+    lastName?: string;
+    username?: string;
+    usernameLower?: string;
+    profileImage?: string;
+  },
+) {
+  const userRef = doc(
+    db,
+    "users",
+    user.uid,
+  );
 
-  if (!existingUser.exists()) {
-    await setDoc(userRef, {
-  uid: user.uid,
-  email: user.email || "",
-  role: "student",
-  status: "active",
-  createdAt: serverTimestamp(),
-  lastActiveAt: serverTimestamp(),
-});
-  }
+  const existingUser =
+    await getDoc(userRef);
+
+  const existingData =
+    existingUser.exists()
+      ? existingUser.data()
+      : {};
+
+  await setDoc(
+    userRef,
+    {
+      uid: user.uid,
+
+      email: user.email ?? "",
+
+      firstName:
+        data?.firstName ??
+        existingData.firstName ??
+        "",
+
+      middleName:
+        data?.middleName ??
+        existingData.middleName ??
+        "",
+
+      lastName:
+        data?.lastName ??
+        existingData.lastName ??
+        "",
+
+      displayName:
+        user.displayName ??
+        existingData.displayName ??
+        "",
+
+      username:
+        data?.username ??
+        existingData.username ??
+        "",
+
+      usernameLower:
+        data?.usernameLower ??
+        existingData.usernameLower ??
+        "",
+
+      profileImage:
+        data?.profileImage ??
+        existingData.profileImage ??
+        user.photoURL ??
+        "",
+
+      role:
+        existingData.role ??
+        "student",
+
+      status:
+        existingData.status ??
+        "active",
+
+      totalXP:
+        existingData.totalXP ??
+        0,
+
+      totalSolved:
+        existingData.totalSolved ??
+        0,
+
+      totalCorrect:
+        existingData.totalCorrect ??
+        0,
+
+      lastActiveAt:
+        serverTimestamp(),
+    },
+    {
+      merge: true,
+    },
+  );
 }
 
-/**
+/*
  * ============================================================
- * EMAIL / PASSWORD REGISTRATION
+ * CREATE EMAIL/PASSWORD ACCOUNT
  * ============================================================
- *
- * New account flow:
- *
- * Email + Password
- *       ↓
- * Firebase account created
- *       ↓
- * Verification email sent
- *       ↓
- * User verifies email
- *       ↓
- * Complete Profile
- *
- * Name and country are NOT collected here.
  */
-export async function registerWithEmail(
+
+export async function createEmailAccount(
   email: string,
   password: string,
 ) {
-  const credential = await createUserWithEmailAndPassword(
-    auth,
-    email.trim(),
-    password,
-  );
+  const normalizedEmail =
+    email.trim().toLowerCase();
 
-  const user = credential.user;
+  const credential =
+    await createUserWithEmailAndPassword(
+      auth,
+      normalizedEmail,
+      password,
+    );
 
-  // Create the basic user record.
-  await createUserRecord(user);
-
-  // Send Firebase verification email.
-  await sendEmailVerification(user);
-
-  return user;
+  return credential.user;
 }
 
-/**
+/*
  * ============================================================
- * EMAIL / PASSWORD LOGIN
+ * EMAIL LOGIN
  * ============================================================
- *
- * Existing user:
- *
- * Email + Password
- *       ↓
- * Firebase Login
- *       ↓
- * Dashboard
  */
+
 export async function loginWithEmail(
   email: string,
   password: string,
 ) {
-  const credential = await signInWithEmailAndPassword(
-    auth,
-    email.trim(),
-    password,
-  );
+  const normalizedEmail =
+    email.trim().toLowerCase();
 
-  const user = credential.user;
-
-  // Make sure the main user record exists.
-  await createUserRecord(user);
-
-  return user;
-}
-
-/**
- * ============================================================
- * CONTINUE WITH EMAIL
- * ============================================================
- *
- * The UI has one Continue button.
- *
- * Existing account:
- *   → Login
- *
- * New account:
- *   → Create account
- *   → Send verification email
- *
- * The UI does not need separate Login/Register buttons.
- */
-export async function continueWithEmail(
-  email: string,
-  password: string,
-) {
-  try {
-    const user = await registerWithEmail(
-      email,
+  const credential =
+    await signInWithEmailAndPassword(
+      auth,
+      normalizedEmail,
       password,
     );
 
-    return {
-      type: "register" as const,
-      user,
-    };
-  } catch (error: unknown) {
-    const code =
-      typeof error === "object" &&
-      error !== null &&
-      "code" in error
-        ? String(
-            (error as { code?: unknown }).code,
-          )
-        : "";
+  const user =
+    credential.user;
 
-    if (code === "auth/email-already-in-use") {
-      const user = await loginWithEmail(
-        email,
-        password,
-      );
+  await reload(user);
 
-      return {
-        type: "login" as const,
-        user,
-      };
-    }
+  const refreshedUser =
+    auth.currentUser ?? user;
 
-    throw error;
-  }
-}
-
-
-/**
- * ============================================================
- * GOOGLE LOGIN
- * ============================================================
- *
- * Google flow:
- *
- * Continue with Google
- *       ↓
- * Existing Sigma-Sprint profile?
- *       ↓
- * YES → Dashboard
- * NO  → Complete Profile
- */
-export async function loginWithGoogle() {
-  const credential = await signInWithPopup(
-    auth,
-    googleProvider,
+  await createUserRecord(
+    refreshedUser,
   );
 
-  const user = credential.user;
-
-  // Create the basic user record if this is
-  // the user's first time using Sigma-Sprint.
-  await createUserRecord(user);
-
-  return user;
+  return refreshedUser;
 }
 
-/**
+/*
  * ============================================================
- * PROFILE CHECK
+ * SAVE NEW USER PROFILE
  * ============================================================
  *
- * Determines whether the user has completed
- * their Sigma-Sprint profile.
- *
- * Required:
- * - displayName
- * - email
- *
- * Optional:
- * - bio
- * - avatarUrl
+ * Used during signup after Firebase Auth account creation.
  */
-export async function hasCompletedProfile(uid: string) {
-  const profileRef = doc(db, "profiles", uid);
 
-  const profileSnapshot = await getDoc(profileRef);
-
-  if (!profileSnapshot.exists()) {
-    return false;
-  }
-
-  const profile = profileSnapshot.data();
-
-  return Boolean(
-    profile.displayName &&
-      profile.email,
-  );
-}
-
-/**
- * ============================================================
- * SAVE PROFILE
- * ============================================================
- *
- * Profile fields:
- *
- * - displayName
- * - email
- * - bio
- * - avatarUrl
- *
- * This is called AFTER the user has verified their
- * email (email signup) or after first-time Google signup.
- */
-export async function saveProfile(
+export async function saveNewUserProfile(
   user: User,
   data: {
-    displayName: string;
-    bio?: string;
-    avatarUrl?: string;
+    firstName: string;
+    middleName?: string;
+    lastName: string;
+    username: string;
+    profileImage?: string;
   },
 ) {
-  const displayName = data.displayName.trim();
-  const bio = data.bio?.trim() || "";
+  const firstName =
+    data.firstName.trim();
 
-  const avatarUrl =
-    data.avatarUrl ||
-    user.photoURL ||
+  const middleName =
+    data.middleName?.trim() ?? "";
+
+  const lastName =
+    data.lastName.trim();
+
+  const username =
+    data.username.trim();
+
+  const usernameLower =
+    username.toLowerCase();
+
+  const profileImage =
+    data.profileImage ??
+    user.photoURL ??
     "";
 
-  const profileRef = doc(db, "profiles", user.uid);
+  const displayName = [
+    firstName,
+    middleName,
+    lastName,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  if (!firstName) {
+    throw new Error(
+      "First name is required.",
+    );
+  }
+
+  if (!lastName) {
+    throw new Error(
+      "Last name is required.",
+    );
+  }
+
+  if (!username) {
+    throw new Error(
+      "Username is required.",
+    );
+  }
 
   await setDoc(
-    profileRef,
+    doc(
+      db,
+      "users",
+      user.uid,
+    ),
     {
       uid: user.uid,
+
+      firstName,
+      middleName,
+      lastName,
+
       displayName,
-      email: user.email || "",
-      bio,
-      avatarUrl,
+
+      username,
+      usernameLower,
+
+      email:
+        user.email ?? "",
+
+      profileImage,
+
+      role: "student",
+      status: "active",
+
+      totalXP: 0,
+      totalSolved: 0,
+      totalCorrect: 0,
+
+      createdAt:
+        serverTimestamp(),
+
+      updatedAt:
+        serverTimestamp(),
+
+      lastActiveAt:
+        serverTimestamp(),
     },
     {
       merge: true,
     },
   );
 
-  /**
-   * Keep Firebase Authentication profile
-   * synchronized with Sigma-Sprint profile.
-   */
-  await updateProfile(user, {
-    displayName,
-    photoURL: avatarUrl || null,
-  });
+  await updateProfile(
+    user,
+    {
+      displayName,
+      photoURL:
+        profileImage || null,
+    },
+  );
 }
 
-/**
+/*
+ * ============================================================
+ * GET USER PROFILE
+ * ============================================================
+ */
+
+export async function getUserProfile(
+  uid: string,
+) {
+  const userRef = doc(
+    db,
+    "users",
+    uid,
+  );
+
+  const snapshot =
+    await getDoc(userRef);
+
+  if (!snapshot.exists()) {
+    return null;
+  }
+
+  return snapshot.data();
+}
+
+/*
  * ============================================================
  * LOGOUT
  * ============================================================
  */
+
 export async function logout() {
   await signOut(auth);
 }

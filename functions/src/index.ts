@@ -9,7 +9,8 @@ setGlobalOptions({maxInstances: 10});
 
 export const checkEmailStatus = onCall(
   {
-    cors: ["http://localhost:3000"],
+    cors: true,
+    invoker: "public",
   },
   async (request) => {
     const email = String(request.data?.email || "").trim().toLowerCase();
@@ -31,11 +32,11 @@ export const checkEmailStatus = onCall(
       };
     } catch (error: unknown) {
       const code =
-      typeof error === "object" &&
-      error !== null &&
-      "code" in error ?
-        String((error as {code?: unknown}).code) :
-        "";
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error ?
+          String((error as {code?: unknown}).code) :
+          "";
 
       if (code === "auth/user-not-found") {
         return {
@@ -50,4 +51,6 @@ export const checkEmailStatus = onCall(
         "Unable to check email status.",
       );
     }
-  });
+  }
+);
+

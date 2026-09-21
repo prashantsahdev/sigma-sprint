@@ -31,6 +31,7 @@ type UserProfile = {
   role?: string;
   status?: string;
   createdAt?: unknown;
+  totalXP?: number;
   lastActiveAt?: unknown;
 };
 
@@ -40,25 +41,25 @@ type AppearanceSettings = {
   notificationIconUrl?: string;
 };
 
+type SidebarIconType =
+  | "dashboard"
+  | "batches"
+  | "study"
+  | "practice"
+  | "tests"
+  | "ai"
+  | "scholarship"
+  | "progress"
+  | "achievements"
+  | "refer"
+  | "support"
+  | "about"
+  | "privacy";
+
 function SidebarIcon({
   type,
 }: {
-  type:
-    | "dashboard"
-    | "study"
-    | "batches"
-    | "play"
-    | "review"
-    | "questions"
-    | "ai"
-    | "mistake"
-    | "community"
-    | "leaderboard"
-    | "scholarship"
-    | "refer"
-    | "support"
-    | "contact"
-    | "about";
+  type: SidebarIconType;
 }) {
   const common = "h-[19px] w-[19px] shrink-0";
 
@@ -71,10 +72,55 @@ function SidebarIcon({
         stroke="currentColor"
         strokeWidth="1.8"
       >
-        <rect x="3" y="3" width="7" height="7" rx="1.5" />
-        <rect x="14" y="3" width="7" height="7" rx="1.5" />
-        <rect x="3" y="14" width="7" height="7" rx="1.5" />
-        <rect x="14" y="14" width="7" height="7" rx="1.5" />
+        <rect
+          x="3"
+          y="3"
+          width="7"
+          height="7"
+          rx="1.5"
+        />
+        <rect
+          x="14"
+          y="3"
+          width="7"
+          height="7"
+          rx="1.5"
+        />
+        <rect
+          x="3"
+          y="14"
+          width="7"
+          height="7"
+          rx="1.5"
+        />
+        <rect
+          x="14"
+          y="14"
+          width="7"
+          height="7"
+          rx="1.5"
+        />
+      </svg>
+    );
+  }
+
+  if (type === "batches") {
+    return (
+      <svg
+        className={common}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      >
+        <rect
+          x="3"
+          y="4"
+          width="18"
+          height="16"
+          rx="2"
+        />
+        <path d="M8 4v16M3 9h18" />
       </svg>
     );
   }
@@ -95,7 +141,7 @@ function SidebarIcon({
     );
   }
 
-  if (type === "batches") {
+  if (type === "practice") {
     return (
       <svg
         className={common}
@@ -104,51 +150,33 @@ function SidebarIcon({
         stroke="currentColor"
         strokeWidth="1.8"
       >
-        <rect x="3" y="4" width="18" height="16" rx="2" />
-        <path d="M8 4v16M3 9h18" />
-      </svg>
-    );
-  }
-
-  if (type === "play") {
-    return (
-      <svg
-        className={common}
-        viewBox="0 0 24 24"
-        fill="currentColor"
-      >
-        <path d="M8 5.2v13.6c0 .8.9 1.3 1.6.9l10-6.8c.6-.4.6-1.3 0-1.7l-10-6.8C8.9 3.9 8 4.4 8 5.2Z" />
-      </svg>
-    );
-  }
-
-  if (type === "review") {
-    return (
-      <svg
-        className={common}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      >
-        <path d="M4 12a8 8 0 1 0 2.3-5.7" />
-        <path d="M4 5v5h5" />
-        <path d="M12 8v4l2.5 2" />
-      </svg>
-    );
-  }
-
-  if (type === "questions") {
-    return (
-      <svg
-        className={common}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      >
-        <rect x="4" y="3" width="16" height="18" rx="2" />
+        <rect
+          x="4"
+          y="3"
+          width="16"
+          height="18"
+          rx="2"
+        />
         <path d="M8 7h8M8 11h8M8 15h5M8 18h3" />
+      </svg>
+    );
+  }
+
+  if (type === "tests") {
+    return (
+      <svg
+        className={common}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      >
+        <circle
+          cx="12"
+          cy="12"
+          r="8.5"
+        />
+        <path d="M12 7v5l3 2" />
       </svg>
     );
   }
@@ -164,53 +192,11 @@ function SidebarIcon({
       >
         <path d="M12 3v3M12 18v3M3 12h3M18 12h3" />
         <path d="m5.6 5.6 2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" />
-        <circle cx="12" cy="12" r="4" />
-      </svg>
-    );
-  }
-
-  if (type === "mistake") {
-    return (
-      <svg
-        className={common}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      >
-        <path d="M12 3 21 20H3L12 3Z" />
-        <path d="M12 9v5M12 17h.01" />
-      </svg>
-    );
-  }
-
-  if (type === "community") {
-    return (
-      <svg
-        className={common}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      >
-        <circle cx="9" cy="8" r="3" />
-        <circle cx="17" cy="9" r="2.5" />
-        <path d="M3.5 19c.7-3.2 2.6-5 5.5-5s4.8 1.8 5.5 5" />
-        <path d="M14.5 15c2.8-.4 4.8.9 5.5 3.5" />
-      </svg>
-    );
-  }
-
-  if (type === "leaderboard") {
-    return (
-      <svg
-        className={common}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      >
-        <path d="M6 20V10h4v10M14 20V4h4v16M3 20h18" />
+        <circle
+          cx="12"
+          cy="12"
+          r="4"
+        />
       </svg>
     );
   }
@@ -231,23 +217,69 @@ function SidebarIcon({
     );
   }
 
+  if (type === "progress") {
+    return (
+      <svg
+        className={common}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      >
+        <path d="M4 20V10" />
+        <path d="M10 20V5" />
+        <path d="M16 20v-7" />
+        <path d="M22 20V3" />
+        <path d="M3 20h20" />
+      </svg>
+    );
+  }
+
+  if (type === "achievements") {
+    return (
+      <svg
+        className={common}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      >
+        <circle
+          cx="12"
+          cy="8"
+          r="4.5"
+        />
+        <path d="M9.5 12 8 21l4-2 4 2-1.5-9" />
+        <path d="m10.5 8 1 1 2-2" />
+      </svg>
+    );
+  }
+
   if (type === "refer") {
-  return (
-    <svg
-      className={common}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-    >
-      <circle cx="9" cy="8" r="3" />
-      <circle cx="17" cy="10" r="2.5" />
-      <path d="M3.5 19c.7-3.2 2.6-5 5.5-5s4.8 1.8 5.5 5" />
-      <path d="M14 16c2.4-.2 4.5.8 5.5 3" />
-      <path d="M16 5v5M13.5 7.5h5" />
-    </svg>
-  );
-}
+    return (
+      <svg
+        className={common}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      >
+        <circle
+          cx="9"
+          cy="8"
+          r="3"
+        />
+        <circle
+          cx="17"
+          cy="10"
+          r="2.5"
+        />
+        <path d="M3.5 19c.7-3.2 2.6-5 5.5-5s4.8 1.8 5.5 5" />
+        <path d="M14 16c2.4-.2 4.5.8 5.5 3" />
+        <path d="M16 5v5M13.5 7.5h5" />
+      </svg>
+    );
+  }
 
   if (type === "support") {
     return (
@@ -265,7 +297,7 @@ function SidebarIcon({
     );
   }
 
-  if (type === "contact") {
+  if (type === "privacy") {
     return (
       <svg
         className={common}
@@ -274,12 +306,14 @@ function SidebarIcon({
         stroke="currentColor"
         strokeWidth="1.8"
       >
-        <rect x="3" y="5" width="18" height="14" rx="2" />
-        <path d="m4 7 8 6 8-6" />
+        <path d="M12 3 20 6v5c0 5-3.2 8.2-8 10-4.8-1.8-8-5-8-10V6l8-3Z" />
+        <path d="M12 8v5" />
+        <path d="M12 16h.01" />
       </svg>
     );
   }
 
+  // About
   return (
     <svg
       className={common}
@@ -288,7 +322,11 @@ function SidebarIcon({
       stroke="currentColor"
       strokeWidth="1.8"
     >
-      <circle cx="12" cy="12" r="9" />
+      <circle
+        cx="12"
+        cy="12"
+        r="9"
+      />
       <path d="M12 10v6M12 7h.01" />
     </svg>
   );
@@ -303,13 +341,16 @@ export default function DashboardLayout({
   const pathname = usePathname();
 
   const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profile, setProfile] =
+    useState<UserProfile | null>(null);
   const [username, setUsername] = useState("");
   const [checking, setChecking] = useState(true);
-  const [loggingOut, setLoggingOut] = useState(false);
-  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [loggingOut, setLoggingOut] =
+    useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] =
+    useState(false);
 
-  const [appearance, setAppearance] =
+  const [, setAppearance] =
     useState<AppearanceSettings>({
       streakIconUrl: "/streak.png",
       xpIconUrl: "/xp.png",
@@ -337,17 +378,24 @@ export default function DashboardLayout({
 
           setUser(refreshedUser);
 
-          const userProfile = await getUserProfile(
-            refreshedUser.uid,
-          );
+          const userProfile =
+            await getUserProfile(
+              refreshedUser.uid,
+            );
 
           if (userProfile) {
-            setProfile(userProfile as UserProfile);
+            setProfile(
+              userProfile as UserProfile,
+            );
           }
 
           const usernameQuery = query(
             collection(db, "usernames"),
-            where("uid", "==", refreshedUser.uid),
+            where(
+              "uid",
+              "==",
+              refreshedUser.uid,
+            ),
             limit(1),
           );
 
@@ -394,8 +442,13 @@ export default function DashboardLayout({
           }
 
           setChecking(false);
-        } catch {
-          router.replace("/");
+        } catch (error) {
+          console.error(
+            "Dashboard authentication check failed:",
+            error,
+          );
+
+          setChecking(false);
         }
       },
     );
@@ -451,10 +504,16 @@ export default function DashboardLayout({
     "";
 
   const firstLetter =
-    displayName.trim().charAt(0).toUpperCase() || "S";
+    displayName
+      .trim()
+      .charAt(0)
+      .toUpperCase() || "S";
 
   const sidebarItemClass =
     "flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-[15px] font-medium text-gray-700 transition hover:bg-[#f7f4fc] hover:text-[#5424ad]";
+
+  const activeSidebarItemClass =
+    "flex w-full items-center gap-3 rounded-xl bg-[#f1ebfb] px-4 py-3 text-left text-[15px] font-semibold text-[#5424ad]";
 
   const isActive = (path: string) => {
     if (path === "/dashboard") {
@@ -466,16 +525,19 @@ export default function DashboardLayout({
 
   return (
     <main className="min-h-screen bg-[#f7f7f9]">
-      {/* HEADER */}
+      {/* =====================================================
+          HEADER
+      ===================================================== */}
 
       <header className="sticky top-0 z-50 h-12 border-b border-white/10 bg-[#111111] text-white shadow-md">
-        <div className="mx-auto flex h-full max-w-[1400px] items-center justify-between px-5 sm:px-8">
-
+        <div className="flex h-full w-full items-center justify-between px-5 sm:px-8">
           {/* LOGO */}
 
           <button
             type="button"
-            onClick={() => router.push("/dashboard")}
+            onClick={() =>
+              router.push("/dashboard")
+            }
             className="flex items-center gap-3"
           >
             <Image
@@ -488,7 +550,10 @@ export default function DashboardLayout({
             />
 
             <span className="text-[21px] font-extrabold tracking-[-0.9px]">
-              <span className="text-white">Sigma</span>
+              <span className="text-white">
+                Sigma
+              </span>
+
               <span className="text-[#9b6cff]">
                 Sprint
               </span>
@@ -501,7 +566,9 @@ export default function DashboardLayout({
             <button
               type="button"
               onClick={() =>
-                setProfileMenuOpen((open) => !open)
+                setProfileMenuOpen(
+                  (open) => !open,
+                )
               }
               className="flex items-center gap-3 rounded-full px-2 py-1 transition hover:bg-white/10"
               aria-label="Open profile menu"
@@ -542,7 +609,7 @@ export default function DashboardLayout({
                   className="fixed inset-0 z-40 cursor-default"
                 />
 
-                <div className="absolute right-0 top-12 z-50 w-64 overflow-hidden rounded-2xl border border-gray-200 bg-white text-gray-900 shadow-[0_15px_45px_rgba(0,0,0,0.18)]">
+                <div className="absolute right-0 top-12 z-50 w-64 origin-top-right overflow-hidden rounded-2xl border border-gray-200 bg-white text-gray-900 shadow-[0_15px_45px_rgba(0,0,0,0.18)] animate-[profileDropdown_180ms_ease-out]">
                   <div className="px-5 py-4">
                     <div className="flex items-center gap-3">
                       <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#f0eafb]">
@@ -580,21 +647,10 @@ export default function DashboardLayout({
                     onClick={() =>
                       router.push("/profile")
                     }
-                    className="flex w-full px-5 py-3.5 text-left text-[14px] font-medium transition hover:bg-[#f7f4fc] hover:text-[#5424ad]"
+                    className="flex w-full px-5 py-3.5 text-left text-[14px] font-medium transition-colors duration-150 hover:bg-[#f7f4fc] hover:text-[#5424ad]"
                   >
                     Profile
                   </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      router.push("/settings")
-                    }
-                    className="flex w-full px-5 py-3.5 text-left text-[14px] font-medium transition hover:bg-[#f7f4fc] hover:text-[#5424ad]"
-                  >
-                    Settings
-                  </button>
-
                   <div className="mx-5 border-t border-gray-100" />
 
                   <button
@@ -604,7 +660,7 @@ export default function DashboardLayout({
                       void handleLogout();
                     }}
                     disabled={loggingOut}
-                    className="flex w-full px-5 py-3.5 text-left text-[14px] font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="flex w-full px-5 py-3.5 text-left text-[14px] font-semibold text-red-600 transition-colors duration-150 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {loggingOut
                       ? "Signing out..."
@@ -617,13 +673,227 @@ export default function DashboardLayout({
         </div>
       </header>
 
-      {/* BELOW HEADER */}
+      {/* =====================================================
+          GLOBAL WHITE HEADER
+      ===================================================== */}
+
+      <div className="fixed left-0 right-0 top-12 z-40 border-b border-[#e4e4e7] bg-white shadow-sm lg:left-[250px]">
+        <div className="mx-auto flex h-[58px] max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+          {/* LEFT — PAGE TITLE */}
+
+          <div className="flex items-center">
+            {pathname.startsWith(
+              "/dashboard/study/subjects",
+            ) && (
+              <button
+                type="button"
+                onClick={() => {
+                  const params =
+                    new URLSearchParams(
+                      window.location.search,
+                    );
+
+                  const batchId =
+                    params.get("batchId");
+
+                  if (
+                    pathname.startsWith(
+                      "/dashboard/study/subjects/topics",
+                    )
+                  ) {
+                    if (batchId) {
+                      router.push(
+                        `/dashboard/study/subjects?batchId=${encodeURIComponent(batchId)}`,
+                      );
+                    } else {
+                      router.push(
+                        "/dashboard/study/subjects",
+                      );
+                    }
+
+                    return;
+                  }
+
+                  if (
+                    pathname.startsWith(
+                      "/dashboard/study/subjects",
+                    )
+                  ) {
+                    if (batchId) {
+                      router.push(
+                        `/dashboard/study?batchId=${encodeURIComponent(batchId)}`,
+                      );
+                    } else {
+                      router.push(
+                        "/dashboard/study",
+                      );
+                    }
+
+                    return;
+                  }
+
+                  router.push("/dashboard/study");
+                }}
+                aria-label="Back to Study"
+                className="mr-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#e1e1e4] bg-white text-[#202020] transition hover:bg-[#f5f5f6]"
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M15 18L9 12L15 6"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+            )}
+
+            <h1 className="text-[17px] font-extrabold tracking-[-0.01em] text-[#202020]">
+              {pathname === "/dashboard"
+                ? "Dashboard"
+                : pathname.startsWith(
+                    "/dashboard/study/subjects",
+                  )
+                  ? "Subjects"
+                  : pathname.startsWith(
+                      "/dashboard/study",
+                    )
+                    ? "Study"
+                    : pathname.startsWith(
+                        "/dashboard/sprint-ai",
+                      )
+                      ? "Sprint AI"
+                      : pathname.startsWith(
+                          "/dashboard/scholarships",
+                        )
+                        ? "Scholarship"
+                        : pathname.startsWith(
+                            "/dashboard/progress",
+                          )
+                          ? "Progress"
+                          : pathname.startsWith(
+                              "/dashboard/achievements",
+                            )
+                            ? "Achievements"
+                            : pathname.startsWith(
+                                "/dashboard/refer",
+                              )
+                              ? "Refer & Earn"
+                              : pathname.startsWith(
+                                  "/dashboard/support",
+                                )
+                                ? "Help & Support"
+                                : pathname.startsWith(
+                                    "/dashboard/about",
+                                  )
+                                  ? "About Us"
+                                  : pathname.startsWith(
+                                      "/dashboard/privacy",
+                                    )
+                                    ? "Privacy Policy"
+                                    : pathname.startsWith(
+                                        "/dashboard/batches",
+                                      )
+                                      ? "My Batches"
+                                      : "Dashboard"}
+            </h1>
+          </div>
+
+          {/* RIGHT — STATUS */}
+
+          <div className="flex items-center gap-3 sm:gap-4">
+            {/* GIFT */}
+
+            <button
+              type="button"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-[#e1e1e4] bg-white transition hover:bg-[#f7f7f8]"
+              aria-label="Gifts"
+            >
+              <Image
+                src="/gift.png"
+                alt="Gift"
+                width={23}
+                height={23}
+                className="object-contain"
+                unoptimized
+              />
+            </button>
+
+            {/* STREAK */}
+
+            <div className="flex h-10 items-center gap-1.5 rounded-full border border-[#e1e1e4] bg-white px-3 shadow-sm">
+              <Image
+                src="/streak.png"
+                alt="Streak"
+                width={23}
+                height={23}
+                className="object-contain"
+                unoptimized
+              />
+
+              <span className="text-sm font-bold text-[#202020]">
+                0
+              </span>
+            </div>
+
+            {/* XP */}
+
+            <div className="flex h-10 items-center gap-1.5 rounded-full border border-[#e1e1e4] bg-white px-3 shadow-sm">
+              <Image
+                src="/xp.png"
+                alt="XP"
+                width={23}
+                height={23}
+                className="object-contain"
+                unoptimized
+              />
+
+              <span className="text-sm font-bold text-[#202020]">
+                {(profile?.totalXP ?? 0).toLocaleString()}
+              </span>
+            </div>
+
+            {/* NOTIFICATION */}
+
+            <button
+              type="button"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-[#e1e1e4] bg-white transition hover:bg-[#f7f7f8]"
+              aria-label="Notifications"
+            >
+              <Image
+                src="/notification.png"
+                alt="Notifications"
+                width={23}
+                height={23}
+                className="object-contain"
+                unoptimized
+              />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* =====================================================
+          DASHBOARD BODY
+      ===================================================== */}
 
       <div className="flex">
-        {/* SIDEBAR */}
+        {/* ===================================================
+            PERMANENT SIDEBAR
+        =================================================== */}
 
-        <aside className="fixed left-0 top-14 bottom-0 z-40 hidden w-[250px] border-r border-gray-200 bg-white lg:block">
+        <aside className="fixed bottom-0 left-0 top-12 z-40 hidden w-[250px] border-r border-gray-200 bg-white lg:block">
           <nav className="flex h-full flex-col overflow-y-auto px-4 py-6">
+            {/* =================================================
+                MAIN
+            ================================================= */}
 
             <div>
               <p className="px-3 pb-3 text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400">
@@ -631,6 +901,8 @@ export default function DashboardLayout({
               </p>
 
               <div className="space-y-1">
+                {/* Dashboard */}
+
                 <button
                   type="button"
                   onClick={() =>
@@ -638,7 +910,7 @@ export default function DashboardLayout({
                   }
                   className={
                     isActive("/dashboard")
-                      ? "flex w-full items-center gap-3 rounded-xl bg-[#f1ebfb] px-4 py-3 text-left text-[15px] font-semibold text-[#5424ad]"
+                      ? activeSidebarItemClass
                       : sidebarItemClass
                   }
                 >
@@ -646,203 +918,261 @@ export default function DashboardLayout({
                   Dashboard
                 </button>
 
+                {/* My Batches */}
+
                 <button
                   type="button"
                   onClick={() =>
-                    router.push("/dashboard/study")
+                    router.push(
+                      "/dashboard/batches",
+                    )
                   }
                   className={
-                    isActive("/dashboard/study")
-                      ? "flex w-full items-center gap-3 rounded-xl bg-[#f1ebfb] px-4 py-3 text-left text-[15px] font-semibold text-[#5424ad]"
+                    isActive(
+                      "/dashboard/batches",
+                    )
+                      ? activeSidebarItemClass
+                      : sidebarItemClass
+                  }
+                >
+                  <SidebarIcon type="batches" />
+                  My Batches
+                </button>
+
+                {/* Study */}
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    router.push(
+                      "/dashboard/study",
+                    )
+                  }
+                  className={
+                    isActive(
+                      "/dashboard/study",
+                    )
+                      ? activeSidebarItemClass
                       : sidebarItemClass
                   }
                 >
                   <SidebarIcon type="study" />
                   Study
                 </button>
+              </div>
+            </div>
+
+            {/* =================================================
+                SIGMA FEATURES
+            ================================================= */}
+
+            <div className="mt-8">
+              <p className="px-3 pb-3 text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400">
+                Sigma Features
+              </p>
+
+              <div className="space-y-1">
+                {/* Sprint AI */}
 
                 <button
                   type="button"
                   onClick={() =>
-                    router.push("/dashboard/batches")
+                    router.push(
+                      "/dashboard/sprint-ai",
+                    )
                   }
                   className={
-                    isActive("/dashboard/batches")
-                      ? "flex w-full items-center gap-3 rounded-xl bg-[#f1ebfb] px-4 py-3 text-left text-[15px] font-semibold text-[#5424ad]"
+                    isActive(
+                      "/dashboard/sprint-ai",
+                    )
+                      ? activeSidebarItemClass
                       : sidebarItemClass
                   }
-                >
-                  <SidebarIcon type="batches" />
-                  Batches
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    router.push("/dashboard/play-online")
-                  }
-                  className={sidebarItemClass}
-                >
-                  <SidebarIcon type="play" />
-                  Play Online
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    router.push("/dashboard/quick-review")
-                  }
-                  className={sidebarItemClass}
-                >
-                  <SidebarIcon type="review" />
-                  Quick Review
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    router.push("/dashboard/question-bank")
-                  }
-                  className={sidebarItemClass}
-                >
-                  <SidebarIcon type="questions" />
-                  Question Bank
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    router.push("/dashboard/sprint-ai")
-                  }
-                  className={sidebarItemClass}
                 >
                   <SidebarIcon type="ai" />
                   Sprint AI
                 </button>
 
+                {/* Scholarship */}
+
                 <button
                   type="button"
                   onClick={() =>
-                    router.push("/dashboard/mistake-bank")
+                    router.push(
+                      "/dashboard/scholarships",
+                    )
                   }
-                  className={sidebarItemClass}
+                  className={
+                    isActive(
+                      "/dashboard/scholarships",
+                    )
+                      ? activeSidebarItemClass
+                      : sidebarItemClass
+                  }
                 >
-                  <SidebarIcon type="mistake" />
-                  Mistake Bank
+                  <SidebarIcon type="scholarship" />
+                  Scholarship
                 </button>
               </div>
             </div>
+
+            {/* =================================================
+                PERFORMANCE
+            ================================================= */}
 
             <div className="mt-8">
               <p className="px-3 pb-3 text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400">
-                Community
+                Performance
               </p>
 
               <div className="space-y-1">
-                <button
-                  type="button"
-                  onClick={() =>
-                    router.push("/dashboard/community")
-                  }
-                  className={sidebarItemClass}
-                >
-                  <SidebarIcon type="community" />
-                  Community
-                </button>
+                {/* Progress */}
 
                 <button
                   type="button"
                   onClick={() =>
-                    router.push("/dashboard/leaderboard")
+                    router.push(
+                      "/dashboard/progress",
+                    )
                   }
-                  className={sidebarItemClass}
+                  className={
+                    isActive(
+                      "/dashboard/progress",
+                    )
+                      ? activeSidebarItemClass
+                      : sidebarItemClass
+                  }
                 >
-                  <SidebarIcon type="leaderboard" />
-                  Leaderboard
+                  <SidebarIcon type="progress" />
+                  Progress
+                </button>
+
+                {/* Achievements */}
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    router.push(
+                      "/dashboard/achievements",
+                    )
+                  }
+                  className={
+                    isActive(
+                      "/dashboard/achievements",
+                    )
+                      ? activeSidebarItemClass
+                      : sidebarItemClass
+                  }
+                >
+                  <SidebarIcon type="achievements" />
+                  Achievements
                 </button>
               </div>
             </div>
 
-            <div className="mt-8">
-  <p className="px-3 pb-3 text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400">
-    Opportunities
-  </p>
-
-  <div className="space-y-1">
-    <button
-      type="button"
-      onClick={() =>
-        router.push("/dashboard/scholarships")
-      }
-      className={sidebarItemClass}
-    >
-      <SidebarIcon type="scholarship" />
-      Scholarships
-    </button>
-
-    <button
-      type="button"
-      onClick={() =>
-        router.push("/dashboard/refer")
-      }
-      className={
-        isActive("/dashboard/refer")
-          ? "flex w-full items-center gap-3 rounded-xl bg-[#f1ebfb] px-4 py-3 text-left text-[15px] font-semibold text-[#5424ad]"
-          : sidebarItemClass
-      }
-    >
-      <SidebarIcon type="refer" />
-      Refer & Earn
-    </button>
-  </div>
-</div>
+            {/* =================================================
+                MORE
+            ================================================= */}
 
             <div className="mt-auto pt-8">
               <div className="mb-3 border-t border-gray-100" />
 
               <p className="px-3 pb-3 text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400">
-                Help & Information
+                More
               </p>
 
               <div className="space-y-1">
+                {/* Refer & Earn */}
+
                 <button
                   type="button"
                   onClick={() =>
-                    router.push("/dashboard/support")
+                    router.push(
+                      "/dashboard/refer",
+                    )
                   }
-                  className={sidebarItemClass}
+                  className={
+                    isActive(
+                      "/dashboard/refer",
+                    )
+                      ? activeSidebarItemClass
+                      : sidebarItemClass
+                  }
+                >
+                  <SidebarIcon type="refer" />
+                  Refer & Earn
+                </button>
+
+                {/* Help & Support */}
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    router.push(
+                      "/dashboard/support",
+                    )
+                  }
+                  className={
+                    isActive(
+                      "/dashboard/support",
+                    )
+                      ? activeSidebarItemClass
+                      : sidebarItemClass
+                  }
                 >
                   <SidebarIcon type="support" />
-                  Support
+                  Help & Support
                 </button>
+
+                {/* About Us */}
 
                 <button
                   type="button"
                   onClick={() =>
-                    router.push("/dashboard/contact")
+                    router.push(
+                      "/dashboard/about",
+                    )
                   }
-                  className={sidebarItemClass}
-                >
-                  <SidebarIcon type="contact" />
-                  Contact Us
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    router.push("/dashboard/about")
+                  className={
+                    isActive(
+                      "/dashboard/about",
+                    )
+                      ? activeSidebarItemClass
+                      : sidebarItemClass
                   }
-                  className={sidebarItemClass}
                 >
                   <SidebarIcon type="about" />
                   About Us
+                </button>
+
+                {/* Privacy Policy */}
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    router.push(
+                      "/dashboard/privacy",
+                    )
+                  }
+                  className={
+                    isActive(
+                      "/dashboard/privacy",
+                    )
+                      ? activeSidebarItemClass
+                      : sidebarItemClass
+                  }
+                >
+                  <SidebarIcon type="privacy" />
+                  Privacy Policy
                 </button>
               </div>
             </div>
           </nav>
         </aside>
 
-        {/* ONLY THIS AREA CHANGES */}
+        {/* ===================================================
+            ONLY MAIN CONTENT CHANGES
+        =================================================== */}
 
         <section className="min-w-0 flex-1 px-6 py-10 lg:ml-[250px]">
           {children}

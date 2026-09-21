@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { auth, db } from "../../../lib/firebase";
+import { useRouter } from "next/navigation";
 
 import {
   collection,
@@ -43,23 +44,29 @@ type FirestoreBatch = {
 
   pricingOption?: PricingOption;
 
+  pricing?: {
+  pricingOption: PricingOption;
+  monthlyOriginalPrice: number;
+  monthlyPrice: number;
+  monthlyDiscountPercent: number;
+  yearlyOriginalPrice: number;
+  yearlyPrice: number;
+  yearlyDiscountPercent: number;
+} | null;
+
   /*
    * Multiple-plan batch data
    */
   hasLevels?: boolean;
 
-  levels?: {
-    name:
-      | "Basic"
-      | "Standard"
-      | "Premium";
+levels?: {
+  id?: string;
+  name: "Basic" | "Standard" | "Premium";
 
-    features?: string[];
+  featureIds?: string[];
 
-    pricingOption?:
-      | "Monthly"
-      | "Yearly"
-      | "Both";
+  pricing?: {
+    pricingOption?: "Monthly" | "Yearly" | "Both";
 
     monthlyOriginalPrice?: number;
     monthlyPrice?: number;
@@ -68,7 +75,8 @@ type FirestoreBatch = {
     yearlyOriginalPrice?: number;
     yearlyPrice?: number;
     yearlyDiscountPercent?: number;
-  }[];
+  };
+}[];
 
   description?: string;
   subjects?: string[];
@@ -362,19 +370,22 @@ function getDisplayPricing(batch: Batch) {
     };
   }
 
-  return {
-    originalPrice:
-      batch.yearlyOriginalPrice ||
-      batch.originalPrice,
+ return {
+  originalPrice:
+    batch.yearlyOriginalPrice > 0
+      ? batch.yearlyOriginalPrice
+      : batch.monthlyOriginalPrice,
 
-    price:
-      batch.yearlyPrice ||
-      batch.price,
+  price:
+    batch.yearlyPrice > 0
+      ? batch.yearlyPrice
+      : batch.monthlyPrice,
 
-    discount:
-      batch.yearlyDiscountPercent ||
-      batch.discount,
-  };
+  discount:
+    batch.yearlyDiscountPercent > 0
+      ? batch.yearlyDiscountPercent
+      : batch.monthlyDiscountPercent,
+};
 }
 
 function BookIcon() {
@@ -415,6 +426,7 @@ function ArrowIcon() {
 }
 
 export default function BatchesPage() {
+    const router = useRouter();
   const [filter, setFilter] =
     useState<
       "all" | "free" | "enrolled"
@@ -429,429 +441,243 @@ export default function BatchesPage() {
   const [error, setError] =
     useState("");
 
-  useEffect(() => {
-    let cancelled = false;
+useEffect(() => {
+  let cancelled = false;
 
-    async function loadBatches() {
-      try {
-        setLoading(true);
-        setError("");
+  // Listen for Firebase Auth resolution before reading Firestore
+  const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
+    try {
+      setLoading(true);
+      setError("");
 
-        /*
-         * Visibility is controlled only by Admin:
-         *
-         * isVisible: true  -> visible
-         * isVisible: false -> hidden
-         *
-         * We load all batches so older batches without
-         * isVisible are still treated as visible.
-         */
-        const batchesQuery = query(
-          collection(db, "batches"),
-        );
+      // 1. Fetch batches collection
+      const batchesQuery = collection(db, "batches");
+      const snapshot = await getDocs(batchesQuery);
+      const loadedBatches = snapshot.docs
+        .map((document): Batch | null => {
+          const data = document.data() as FirestoreBatch;
+          const isVisible: boolean = data.isVisible !== false;
 
-        const snapshot =
-          await getDocs(
-            batchesQuery,
-          );
+          if (!isVisible) return null;
 
-const loadedBatches = snapshot.docs
-  .map((document): Batch | null => {
-    const data =
-      document.data() as FirestoreBatch;
+          const startDate = typeof data.startDate === "string" ? data.startDate : "";
+          const endDate = typeof data.endDate === "string" ? data.endDate : "";
+          const timingStatus = getBatchTimingStatus(startDate, endDate);
 
-    /*
-     * Admin visibility:
-     * true  = visible
-     * false = hidden
-     *
-     * Old batches without isVisible
-     * are treated as visible.
-     */
-    const isVisible: boolean =
-      data.isVisible !== false;
+          if (timingStatus === "Expired") return null;
 
-    if (!isVisible) {
-      return null;
-    }
+       const batchType: "free" | "paid" =
+  data.hasLevels === true ||
+  data.pricing != null
+    ? "paid"
+    : "free";
 
-    const startDate =
-      typeof data.startDate === "string"
-        ? data.startDate
-        : "";
-
-    const endDate =
-      typeof data.endDate === "string"
-        ? data.endDate
-        : "";
-
-    const timingStatus =
-      getBatchTimingStatus(
-        startDate,
-        endDate,
-      );
-
-    /*
-     * Expired batches are hidden.
-     */
-    if (timingStatus === "Expired") {
-      return null;
-    }
-
-    /*
-     * Support both fields because
-     * Admin batches may contain either
-     * type or paymentType.
-     */
-    const normalizedType =
-      typeof data.type === "string"
-        ? data.type.trim().toLowerCase()
-        : "";
-
-    const normalizedPaymentType =
-      typeof data.paymentType === "string"
-        ? data.paymentType
-            .trim()
-            .toLowerCase()
-        : "";
-
-    const batchType: "free" | "paid" =
-      normalizedType === "paid" ||
-      normalizedPaymentType === "paid"
-        ? "paid"
-        : "free";
-
-    /*
-     * Read multiple-plan levels saved
-     * by the Admin panel.
-     */
-    const levels = Array.isArray(
-      data.levels,
-    )
-      ? data.levels
-          .filter(
-            (level) =>
-              level &&
-              (level.name === "Basic" ||
-                level.name ===
-                  "Standard" ||
-                level.name ===
-                  "Premium"),
-          )
-          .map((level) => ({
-            name: level.name as
-              | "Basic"
-              | "Standard"
-              | "Premium",
-
-            features:
-              Array.isArray(
-                level.features,
-              )
-                ? level.features
-                : [],
-
-            pricingOption:
-              level.pricingOption ===
-                "Monthly" ||
-              level.pricingOption ===
-                "Yearly" ||
-              level.pricingOption ===
-                "Both"
-                ? level.pricingOption
-                : "Both",
-
-            monthlyOriginalPrice:
-              getNumber(
-                level.monthlyOriginalPrice,
-              ),
-
-            monthlyPrice:
-              getNumber(
-                level.monthlyPrice,
-              ),
-
-            monthlyDiscountPercent:
-              getNumber(
-                level.monthlyDiscountPercent,
-              ),
-
-            yearlyOriginalPrice:
-              getNumber(
-                level.yearlyOriginalPrice,
-              ),
-
-            yearlyPrice:
-              getNumber(
-                level.yearlyPrice,
-              ),
-
-            yearlyDiscountPercent:
-              getNumber(
-                level.yearlyDiscountPercent,
-              ),
-          }))
-      : [];
-
-    /*
-     * Multiple plans are identified by
-     * having more than one selected level.
-     */
-    const hasLevels =
-      data.hasLevels === true &&
-      levels.length > 1;
-
-    /*
-     * Automatically generate the banner
-     * text from the levels selected in Admin.
-     */
-    const planBannerText =
-      hasLevels
-        ? `Multiple Plans inside: ${levels
-            .map(
-              (level) =>
-                level.name,
-            )
-            .join(", ")}`
-        : "";
-
-    /*
-     * For multiple plans, use the Basic
-     * level as the card's display price.
-     *
-     * If Basic doesn't exist, use the
-     * first selected level.
-     */
-    const basicLevel =
-      levels.find(
-        (level) =>
-          level.name === "Basic",
-      ) ?? levels[0];
-
-    const displayOriginalPrice =
-      hasLevels && basicLevel
-        ? basicLevel.pricingOption ===
-            "Monthly" ||
-          basicLevel.pricingOption ===
-            "Both"
-          ? basicLevel.monthlyOriginalPrice
-          : basicLevel.yearlyOriginalPrice
-        : getNumber(
-            data.originalPrice,
-          );
-
-    const displayPrice =
-      hasLevels && basicLevel
-        ? basicLevel.pricingOption ===
-            "Monthly" ||
-          basicLevel.pricingOption ===
-            "Both"
-          ? basicLevel.monthlyPrice
-          : basicLevel.yearlyPrice
-        : getNumber(data.price);
-
-    const displayDiscount =
-      hasLevels && basicLevel
-        ? basicLevel.pricingOption ===
-            "Monthly" ||
-          basicLevel.pricingOption ===
-            "Both"
-          ? basicLevel.monthlyDiscountPercent
-          : basicLevel.yearlyDiscountPercent
-        : getNumber(
-            data.discountPercent,
-          );
-
-    return {
-      id: document.id,
-
-      name:
-        data.name ||
-        "Untitled Batch",
-
-      banner:
-        data.bannerUrl || "",
-
-      type: batchType,
-
-      planBannerText,
-
-      targetAudience:
-        data.targetAudience || "",
-
-      examGoal:
-        data.examGoal || "",
-
-      languages:
-        normalizeArray(
-          data.languages,
-        ),
-
-      originalPrice:
-        displayOriginalPrice,
-
-      price:
-        displayPrice,
-
-      discount:
-        displayDiscount,
-
-      monthlyOriginalPrice:
-        hasLevels && basicLevel
-          ? basicLevel.monthlyOriginalPrice
-          : getNumber(
-              data.monthlyOriginalPrice,
-            ),
-
-      monthlyPrice:
-        hasLevels && basicLevel
-          ? basicLevel.monthlyPrice
-          : getNumber(
-              data.monthlyPrice,
-            ),
-
-      monthlyDiscountPercent:
-        hasLevels && basicLevel
-          ? basicLevel.monthlyDiscountPercent
-          : getNumber(
-              data.monthlyDiscountPercent,
-            ),
-
-      yearlyOriginalPrice:
-        hasLevels && basicLevel
-          ? basicLevel.yearlyOriginalPrice
-          : getNumber(
-              data.yearlyOriginalPrice,
-            ),
-
-      yearlyPrice:
-        hasLevels && basicLevel
-          ? basicLevel.yearlyPrice
-          : getNumber(
-              data.yearlyPrice,
-            ),
-
-      yearlyDiscountPercent:
-        hasLevels && basicLevel
-          ? basicLevel.yearlyDiscountPercent
-          : getNumber(
-              data.yearlyDiscountPercent,
-            ),
-
-      pricingOption:
-        hasLevels && basicLevel
-          ? basicLevel.pricingOption
-          : data.pricingOption ===
-                "Monthly" ||
-              data.pricingOption ===
-                "Yearly" ||
-              data.pricingOption ===
-                "Both"
-            ? data.pricingOption
-            : "Both",
-
-      hasLevels,
-
-      levels,
-
-      startDate,
-
-      endDate,
-
-      isVisible,
-
-      status:
-        timingStatus,
-
-      enrolled: false,
-    };
-  })
-  .filter(
-    (batch): batch is Batch =>
-      batch !== null,
-  );
-
-        /*
-         * Load current student's enrollments.
-         */
-        const currentUser =
-          auth.currentUser;
-
-        if (currentUser) {
-          const enrollmentQuery =
-            query(
-              collection(
-                db,
-                "enrollments",
-              ),
-              where(
-                "uid",
-                "==",
-                currentUser.uid,
-              ),
-            );
-
-          const enrollmentSnapshot =
-            await getDocs(
-              enrollmentQuery,
-            );
-
-          const enrolledBatchIds =
-            new Set(
-              enrollmentSnapshot.docs
-                .map(
-                  (document) =>
-                    document.data()
-                      .batchId,
-                )
+          const levels = Array.isArray(data.levels)
+            ? data.levels
                 .filter(
-                  (
-                    id,
-                  ): id is string =>
-                    typeof id ===
-                    "string",
-                ),
-            );
+                  (level) =>
+                    level &&
+                    (level.name === "Basic" || level.name === "Standard" || level.name === "Premium")
+                )
+              .map((level) => ({
+  name: level.name as "Basic" | "Standard" | "Premium",
 
-          for (
-            const batch of loadedBatches
-          ) {
-            batch.enrolled =
-              enrolledBatchIds.has(
-                batch.id,
-              );
-          }
-        }
+  features: Array.isArray(level.featureIds)
+    ? level.featureIds
+    : [],
 
-        if (!cancelled) {
-          setBatches(
-            loadedBatches,
-          );
-        }
-      } catch (loadError) {
-        console.error(
-          "Failed to load batches:",
-          loadError,
+  pricingOption:
+    level.pricing?.pricingOption === "Monthly" ||
+    level.pricing?.pricingOption === "Yearly" ||
+    level.pricing?.pricingOption === "Both"
+      ? level.pricing.pricingOption
+      : "Both",
+
+  monthlyOriginalPrice: getNumber(
+    level.pricing?.monthlyOriginalPrice,
+  ),
+
+  monthlyPrice: getNumber(
+    level.pricing?.monthlyPrice,
+  ),
+
+  monthlyDiscountPercent: getNumber(
+    level.pricing?.monthlyDiscountPercent,
+  ),
+
+  yearlyOriginalPrice: getNumber(
+    level.pricing?.yearlyOriginalPrice,
+  ),
+
+  yearlyPrice: getNumber(
+    level.pricing?.yearlyPrice,
+  ),
+
+  yearlyDiscountPercent: getNumber(
+    level.pricing?.yearlyDiscountPercent,
+  ),
+}))
+            : [];
+
+          const hasLevels = data.hasLevels === true && levels.length > 1;
+
+          const planBannerText = hasLevels
+            ? `Multiple Plans inside: ${levels.map((level) => level.name).join(", ")}`
+            : "";
+
+          const basicLevel = levels.find((level) => level.name === "Basic") ?? levels[0];
+
+       const displayOriginalPrice =
+  hasLevels && basicLevel
+    ? basicLevel.pricingOption === "Monthly" ||
+      basicLevel.pricingOption === "Both"
+      ? basicLevel.monthlyOriginalPrice
+      : basicLevel.yearlyOriginalPrice
+    : data.pricing
+      ? data.pricing.pricingOption === "Monthly" ||
+        data.pricing.pricingOption === "Both"
+        ? getNumber(data.pricing.monthlyOriginalPrice)
+        : getNumber(data.pricing.yearlyOriginalPrice)
+      : 0;
+
+        const displayPrice =
+  hasLevels && basicLevel
+    ? basicLevel.pricingOption === "Monthly" ||
+      basicLevel.pricingOption === "Both"
+      ? basicLevel.monthlyPrice
+      : basicLevel.yearlyPrice
+    : data.pricing
+      ? data.pricing.pricingOption === "Monthly" ||
+        data.pricing.pricingOption === "Both"
+        ? getNumber(data.pricing.monthlyPrice)
+        : getNumber(data.pricing.yearlyPrice)
+      : 0;
+    const displayDiscount =
+  hasLevels && basicLevel
+    ? basicLevel.pricingOption === "Monthly" ||
+      basicLevel.pricingOption === "Both"
+      ? basicLevel.monthlyDiscountPercent
+      : basicLevel.yearlyDiscountPercent
+    : data.pricing
+      ? data.pricing.pricingOption === "Monthly" ||
+        data.pricing.pricingOption === "Both"
+        ? getNumber(data.pricing.monthlyDiscountPercent)
+        : getNumber(data.pricing.yearlyDiscountPercent)
+      : 0;
+          return {
+            id: document.id,
+            name: data.name || "Untitled Batch",
+            banner: data.bannerUrl || "",
+            type: batchType,
+            planBannerText,
+            targetAudience: data.targetAudience || "",
+            examGoal: data.examGoal || "",
+            languages: normalizeArray(data.languages),
+            originalPrice: displayOriginalPrice,
+            price: displayPrice,
+            discount: displayDiscount,
+
+
+          monthlyOriginalPrice:
+  hasLevels && basicLevel
+    ? basicLevel.monthlyOriginalPrice
+    : data.pricing
+      ? getNumber(data.pricing.monthlyOriginalPrice)
+      : 0,
+
+monthlyPrice:
+  hasLevels && basicLevel
+    ? basicLevel.monthlyPrice
+    : data.pricing
+      ? getNumber(data.pricing.monthlyPrice)
+      : 0,
+
+monthlyDiscountPercent:
+  hasLevels && basicLevel
+    ? basicLevel.monthlyDiscountPercent
+    : data.pricing
+      ? getNumber(data.pricing.monthlyDiscountPercent)
+      : 0,
+
+yearlyOriginalPrice:
+  hasLevels && basicLevel
+    ? basicLevel.yearlyOriginalPrice
+    : data.pricing
+      ? getNumber(data.pricing.yearlyOriginalPrice)
+      : 0,
+
+yearlyPrice:
+  hasLevels && basicLevel
+    ? basicLevel.yearlyPrice
+    : data.pricing
+      ? getNumber(data.pricing.yearlyPrice)
+      : 0,
+
+yearlyDiscountPercent:
+  hasLevels && basicLevel
+    ? basicLevel.yearlyDiscountPercent
+    : data.pricing
+      ? getNumber(data.pricing.yearlyDiscountPercent)
+      : 0,
+
+pricingOption:
+  hasLevels && basicLevel
+    ? basicLevel.pricingOption
+    : data.pricing?.pricingOption === "Monthly" ||
+      data.pricing?.pricingOption === "Yearly" ||
+      data.pricing?.pricingOption === "Both"
+      ? data.pricing.pricingOption
+      : "Both",
+
+hasLevels,
+levels,
+startDate,
+endDate,
+isVisible,
+status: timingStatus,
+enrolled: false,
+};
+})
+.filter((batch): batch is Batch => batch !== null);
+      // 2. Fetch enrollment status using resolved currentUser
+      if (currentUser) {
+        const enrollmentQuery = query(
+          collection(db, "enrollments"),
+          where("uid", "==", currentUser.uid)
         );
 
-        if (!cancelled) {
-          setError(
-            "Unable to load batches right now.",
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
+        const enrollmentSnapshot = await getDocs(enrollmentQuery);
+        const enrolledBatchIds = new Set(
+          enrollmentSnapshot.docs
+            .map((doc) => doc.data().batchId)
+            .filter((id): id is string => typeof id === "string")
+        );
+
+        for (const batch of loadedBatches) {
+          batch.enrolled = enrolledBatchIds.has(batch.id);
         }
       }
+
+      if (!cancelled) {
+        setBatches(loadedBatches);
+      }
+    } catch (loadError) {
+      console.error("Failed to load batches:", loadError);
+      if (!cancelled) {
+        setError("Unable to load batches right now.");
+      }
+    } finally {
+      if (!cancelled) {
+        setLoading(false);
+      }
     }
+  });
 
-    void loadBatches();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  return () => {
+    cancelled = true;
+    unsubscribe();
+  };
+}, []);
 
   const filteredBatches =
     batches.filter((batch) => {
@@ -1084,7 +910,7 @@ const loadedBatches = snapshot.docs
       )}
     </div>
 
-    {/* BOTTOM SECTION */}
+       {/* BOTTOM SECTION */}
     <div className="mt-6 flex items-center gap-2">
       {/* PRICE */}
       <div className="min-w-0 flex-1">
@@ -1095,7 +921,7 @@ const loadedBatches = snapshot.docs
         ) : (
           <div>
             <div className="flex items-baseline gap-1.5 whitespace-nowrap">
-              {pricing.price > 0 && (
+             {pricing.price > 0 && (
                 <span className="text-[20px] font-bold leading-none text-[#111]">
                   NPR {pricing.price.toLocaleString()}
                 </span>
@@ -1120,23 +946,33 @@ const loadedBatches = snapshot.docs
       {/* MAIN BUTTON */}
       <button
         type="button"
-        className="flex h-[52px] min-w-[118px] items-center justify-center rounded-[7px] bg-[#202528] px-4 text-[16px] font-bold text-white transition hover:bg-[#15191b] active:scale-[0.99]"
+        disabled={batch.enrolled}
+        onClick={() => {
+          if (batch.enrolled) {
+            return;
+          }
+
+          router.push(
+            `/billing?batchId=${encodeURIComponent(batch.id)}`,
+          );
+        }}
+        className="flex h-[52px] min-w-[118px] items-center justify-center rounded-[7px] bg-[#202528] px-4 text-[16px] font-bold text-white transition hover:bg-[#15191b] active:scale-[0.99] disabled:cursor-default disabled:opacity-100"
       >
         {batch.enrolled
           ? "Enrolled"
           : batch.type === "free"
-            ? "Enroll"
+            ? "Enroll Now"
             : "Buy Now"}
       </button>
 
       {/* ARROW BUTTON */}
-     <Link
-  href={`/dashboard/batches/${batch.id}`}
-  aria-label={`See details for ${batch.name}`}
-  className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-[7px] border border-[#d7dadd] bg-white text-[#202528] transition hover:bg-[#f6f6f6] hover:text-[#5424ad]"
->
-  <ArrowIcon />
-</Link>
+      <Link
+        href={`/dashboard/batches/view?batchId=${batch.id}`}
+        aria-label={`See details for ${batch.name}`}
+        className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-[7px] border border-[#d7dadd] bg-white text-[#202528] transition hover:bg-[#f6f6f6] hover:text-[#5424ad]"
+      >
+        <ArrowIcon />
+      </Link>
     </div>
   </div>
 </article>

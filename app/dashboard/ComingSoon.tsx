@@ -1,11 +1,9 @@
 type ComingSoonProps = {
   title?: string;
-  description?: string;
 };
 
 export default function ComingSoon({
   title = "Coming Soon",
-  description = "This feature is currently under development.",
 }: ComingSoonProps) {
   return (
     <div className="flex min-h-[60vh] items-center justify-center px-6">
@@ -15,7 +13,7 @@ export default function ComingSoon({
         </h1>
 
         <p className="mt-2 text-sm text-gray-500">
-          {description}
+          This feature is currently under development.
         </p>
       </div>
     </div>

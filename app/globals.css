@@ -156,3 +156,68 @@ body {
     transform: scale(0.92);
   }
 }
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes profileDropdown {
+  from {
+    opacity: 0;
+    transform: translateY(-5px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+
+@keyframes bannerShine {
+  0% {
+    transform: translateX(-220%) rotate(35deg);
+    opacity: 0;
+  }
+
+  15% {
+    opacity: 0.55;
+  }
+
+  55% {
+    transform: translateX(420%) rotate(35deg);
+    opacity: 0.55;
+  }
+
+  70%,
+  100% {
+    transform: translateX(420%) rotate(35deg);
+    opacity: 0;
+  }
+}
+
+@keyframes batchDrawerIn {
+  from {
+    transform: translateX(100%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes batchDrawerOut {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(100%);
+  }
+}

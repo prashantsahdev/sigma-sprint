@@ -2,7 +2,10 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import {
+  useRouter,
+  useSearchParams,
+} from "next/navigation";
 import { useEffect, useState } from "react";
 
 import {
@@ -17,19 +20,29 @@ import {
 } from "firebase/firestore";
 
 import { auth, db } from "@/lib/firebase";
+import { getUserProfile } from "@/lib/auth";
 
 type PricingOption = "Monthly" | "Yearly" | "Both";
 
-type BatchLevel = {
-  name: "Basic" | "Standard" | "Premium";
-  features: string[];
+
+
+type LevelPricing = {
   pricingOption: PricingOption;
+
   monthlyOriginalPrice: number;
   monthlyPrice: number;
   monthlyDiscountPercent: number;
+
   yearlyOriginalPrice: number;
   yearlyPrice: number;
   yearlyDiscountPercent: number;
+};
+
+type BatchLevel = {
+  id: string;
+  name: "Basic" | "Standard" | "Premium";
+  featureIds: string[];
+  pricing: LevelPricing;
 };
 
 type FirestoreBatch = {
@@ -40,27 +53,25 @@ type FirestoreBatch = {
   targetAudience?: string;
   examGoal?: string;
   languages?: string[];
-  type?: string;
-  paymentType?: string;
-  originalPrice?: number;
-  price?: number;
-  discountPercent?: number;
-  monthlyOriginalPrice?: number;
-  monthlyPrice?: number;
-  monthlyDiscountPercent?: number;
-  yearlyOriginalPrice?: number;
-  yearlyPrice?: number;
-  yearlyDiscountPercent?: number;
-  pricingOption?: PricingOption;
+
   hasLevels?: boolean;
   levels?: BatchLevel[];
-  features?: string[];
+
+  featureIds?: string[];
+
   startDate?: string;
   endDate?: string;
   isVisible?: boolean;
-    subjects?: {
+
+  pricing?: LevelPricing | null;
+
+  subjects?: {
+    id: string;
     name: string;
-    topics: string[];
+    topics: {
+      id: string;
+      name: string;
+    }[];
   }[];
 };
 
@@ -99,40 +110,43 @@ function formatDate(value: string): string {
 }
 
 function getLevelPricing(level: BatchLevel) {
-  if (level.pricingOption === "Monthly") {
+  const pricing = level.pricing;
+
+  if (pricing.pricingOption === "Monthly") {
     return {
-      originalPrice: level.monthlyOriginalPrice,
-      price: level.monthlyPrice,
+      originalPrice: pricing.monthlyOriginalPrice,
+      price: pricing.monthlyPrice,
       discount:
-        level.monthlyDiscountPercent ||
+        pricing.monthlyDiscountPercent ||
         getDiscount(
-          level.monthlyOriginalPrice,
-          level.monthlyPrice,
+          pricing.monthlyOriginalPrice,
+          pricing.monthlyPrice,
         ),
     };
   }
 
-  if (level.pricingOption === "Yearly") {
+  if (pricing.pricingOption === "Yearly") {
     return {
-      originalPrice: level.yearlyOriginalPrice,
-      price: level.yearlyPrice,
+      originalPrice: pricing.yearlyOriginalPrice,
+      price: pricing.yearlyPrice,
       discount:
-        level.yearlyDiscountPercent ||
+        pricing.yearlyDiscountPercent ||
         getDiscount(
-          level.yearlyOriginalPrice,
-          level.yearlyPrice,
+          pricing.yearlyOriginalPrice,
+          pricing.yearlyPrice,
         ),
     };
   }
 
+  // Both → use yearly as the primary displayed price
   return {
-    originalPrice: level.yearlyOriginalPrice,
-    price: level.yearlyPrice,
+    originalPrice: pricing.yearlyOriginalPrice,
+    price: pricing.yearlyPrice,
     discount:
-      level.yearlyDiscountPercent ||
+      pricing.yearlyDiscountPercent ||
       getDiscount(
-        level.yearlyOriginalPrice,
-        level.yearlyPrice,
+        pricing.yearlyOriginalPrice,
+        pricing.yearlyPrice,
       ),
   };
 }
@@ -252,23 +266,33 @@ function PlayIcon() {
 }
 
 export default function BatchDetailsPage() {
-  const params = useParams();
+const searchParams = useSearchParams();
 
-  const batchId =
-    typeof params.batchId === "string"
-      ? params.batchId
-      : "";
+const router = useRouter();
+
+const batchId = searchParams.get("batchId") ?? "";
+const from = searchParams.get("from") ?? "";
 
   const [batch, setBatch] =
     useState<FirestoreBatch | null>(null);
+    const [featureMap, setFeatureMap] = useState<
+  Record<string, string>
+>({});
+
+    const [userProfile, setUserProfile] = useState<{
+  totalXP?: number;
+} | null>(null);
 
     const [openSubjectIndex, setOpenSubjectIndex] = useState<number | null>(null);
 
     const [comparePlansOpen, setComparePlansOpen] =
   useState(false);
 
-  const [enrolled, setEnrolled] =
-    useState(false);
+const [enrolled, setEnrolled] =
+  useState(false);
+
+const [enrolledLevelId, setEnrolledLevelId] =
+  useState<string | null>(null);
 
     const [enrollmentSuccessOpen, setEnrollmentSuccessOpen] =
   useState(false);
@@ -346,6 +370,22 @@ const [enrolling, setEnrolling] =
 
           return;
         }
+        const featureSnapshot = await getDocs(
+  collection(db, "features"),
+);
+
+const featureNames: Record<string, string> = {};
+
+featureSnapshot.forEach((featureDoc) => {
+  const featureData = featureDoc.data();
+
+  if (typeof featureData.name === "string") {
+    featureNames[featureDoc.id] =
+      featureData.name;
+  }
+});
+
+setFeatureMap(featureNames);
 
         const data =
           batchSnapshot.data() as FirestoreBatch;
@@ -363,35 +403,50 @@ const [enrolling, setEnrolling] =
         const currentUser =
           auth.currentUser;
 
+
         let isEnrolled = false;
+let purchasedLevelId: string | null = null;
 
-        if (currentUser) {
-          const enrollmentQuery =
-            query(
-              collection(
-                db,
-                "enrollments",
-              ),
-              where(
-                "uid",
-                "==",
-                currentUser.uid,
-              ),
-              where(
-                "batchId",
-                "==",
-                batchId,
-              ),
-            );
+if (currentUser) {
+  const enrollmentQuery =
+    query(
+      collection(
+        db,
+        "enrollments",
+      ),
+      where(
+        "uid",
+        "==",
+        currentUser.uid,
+      ),
+      where(
+        "batchId",
+        "==",
+        batchId,
+      ),
+    );
 
-          const enrollmentSnapshot =
-            await getDocs(
-              enrollmentQuery,
-            );
+  const enrollmentSnapshot =
+    await getDocs(
+      enrollmentQuery,
+    );
 
-          isEnrolled =
-            !enrollmentSnapshot.empty;
-        }
+  isEnrolled =
+    !enrollmentSnapshot.empty;
+
+  if (!enrollmentSnapshot.empty) {
+    const enrollmentData =
+      enrollmentSnapshot.docs[0].data();
+
+    if (
+      typeof enrollmentData.levelId ===
+        "string"
+    ) {
+      purchasedLevelId =
+        enrollmentData.levelId;
+    }
+  }
+}
 
         if (!cancelled) {
           const loadedLevels =
@@ -407,6 +462,10 @@ const [enrolling, setEnrolling] =
           setEnrolled(
             isEnrolled,
           );
+
+          setEnrolledLevelId(
+  purchasedLevelId,
+);
 
           if (
             data.hasLevels === true &&
@@ -478,18 +537,22 @@ const [enrolling, setEnrolling] =
       : [];
 
 const isFreeBatch =
-  batch.type?.toLowerCase() === "free" ||
-  batch.paymentType?.toLowerCase() === "free";
+  batch.hasLevels !== true &&
+  batch.pricing == null;
 
 const isMultiplePlan =
   !isFreeBatch &&
   batch.hasLevels === true &&
   levels.length > 1;
 
-  const displayFeatures =
-    Array.isArray(batch.features)
-      ? batch.features
-      : [];
+const displayFeatures =
+  Array.isArray(batch.featureIds)
+    ? batch.featureIds.map(
+        (featureId) =>
+          featureMap[featureId] ??
+          featureId,
+      )
+    : [];
 
   const selectedLevel =
     levels.find(
@@ -497,33 +560,88 @@ const isMultiplePlan =
         level.name === selectedPlan,
     ) ?? levels[0];
 
-  const selectedLevelFeatures =
-    selectedLevel &&
-    Array.isArray(
-      selectedLevel.features,
-    )
-      ? selectedLevel.features
-      : [];
+    const levelOrder = [
+  "basic",
+  "standard",
+  "premium",
+] as const;
 
-  const featuresToShow =
-    isMultiplePlan
-      ? selectedLevelFeatures
-      : displayFeatures;
+const purchasedLevelIndex =
+  enrolledLevelId
+    ? levelOrder.indexOf(
+        enrolledLevelId as
+          (typeof levelOrder)[number],
+      )
+    : -1;
 
-  const displayPricing = {
-    originalPrice:
-      getNumber(
-        batch.originalPrice,
-      ),
-    price:
-      getNumber(
-        batch.price,
-      ),
-    discount:
-      getNumber(
-        batch.discountPercent,
-      ),
-  };
+const selectedLevelFeatures = (() => {
+  if (!selectedLevel) {
+    return [];
+  }
+
+  const levelOrder = [
+    "basic",
+    "standard",
+    "premium",
+  ] as const;
+
+  const selectedIndex =
+    levelOrder.indexOf(
+      selectedLevel.id as
+        (typeof levelOrder)[number],
+    );
+
+  if (selectedIndex === -1) {
+    return selectedLevel.featureIds ?? [];
+  }
+
+  const cumulativeFeatureIds =
+    levels
+      .filter((level) => {
+        const levelIndex =
+          levelOrder.indexOf(
+            level.id as
+              (typeof levelOrder)[number],
+          );
+
+        return (
+          levelIndex >= 0 &&
+          levelIndex <= selectedIndex
+        );
+      })
+      .flatMap((level) =>
+        Array.isArray(level.featureIds)
+          ? level.featureIds
+          : [],
+      );
+
+  return Array.from(
+    new Set(cumulativeFeatureIds),
+  );
+})();
+
+const featuresToShow = (
+  isMultiplePlan
+    ? selectedLevelFeatures
+    : displayFeatures
+).map(
+  (featureId) =>
+    featureMap[featureId] ??
+    featureId,
+);
+
+ const displayPricing = batch.pricing
+  ? getLevelPricing({
+      id: "single",
+      name: "Basic",
+      featureIds: [],
+      pricing: batch.pricing,
+    })
+  : {
+      originalPrice: 0,
+      price: 0,
+      discount: 0,
+    };
 
   const primaryPricing =
     selectedLevel
@@ -541,8 +659,16 @@ const isMultiplePlan =
   ];
 
   const handleFreeEnrollment = async () => {
-  const currentUser = auth.currentUser;
-  
+const currentUser = auth.currentUser;
+
+if (currentUser) {
+  const profile = await getUserProfile(currentUser.uid);
+
+ if (auth.currentUser) {
+    setUserProfile(profile);
+  }
+}
+
 
   if (!currentUser || !batch.id || !isFreeBatch) {
     return;
@@ -559,15 +685,15 @@ const isMultiplePlan =
     const enrollmentRef = doc(
       collection(db, "enrollments"),
     );
-
-    await setDoc(enrollmentRef, {
-      uid: currentUser.uid,
-      batchId: batch.id,
-      batchName: batch.name || "",
-      type: "free",
-      status: "active",
-      enrolledAt: serverTimestamp(),
-    });
+await setDoc(enrollmentRef, {
+  uid: currentUser.uid,
+  batchId: batch.id,
+  levelId: null,
+  type: "free",
+  status: "active",
+  enrolledAt: serverTimestamp(),
+  updatedAt: serverTimestamp(),
+});
 
     setEnrolled(true);
     setEnrollmentSuccessOpen(true);
@@ -580,6 +706,84 @@ const isMultiplePlan =
     setEnrolling(false);
   }
 };
+
+
+const handlePaidEnrollment = async () => {
+  const currentUser = auth.currentUser;
+
+  if (!currentUser || !batch.id || isFreeBatch) {
+    return;
+  }
+
+  if (enrolling) {
+    return;
+  }
+
+  if (isMultiplePlan && !selectedLevel) {
+    return;
+  }
+
+  try {
+    setEnrolling(true);
+
+    const enrollmentQuery = query(
+      collection(db, "enrollments"),
+      where("uid", "==", currentUser.uid),
+      where("batchId", "==", batch.id),
+    );
+
+    const enrollmentSnapshot = await getDocs(
+      enrollmentQuery,
+    );
+
+    const selectedLevelId =
+      isMultiplePlan
+        ? selectedLevel?.id ?? null
+        : null;
+
+    if (enrollmentSnapshot.empty) {
+      const enrollmentRef = doc(
+        collection(db, "enrollments"),
+      );
+
+      await setDoc(enrollmentRef, {
+        uid: currentUser.uid,
+        batchId: batch.id,
+        levelId: selectedLevelId,
+        type: "paid",
+        status: "active",
+        enrolledAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      const enrollmentDoc =
+        enrollmentSnapshot.docs[0];
+
+      await setDoc(
+        enrollmentDoc.ref,
+        {
+          levelId: selectedLevelId,
+          type: "paid",
+          status: "active",
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+    }
+
+    setEnrolled(true);
+    setEnrolledLevelId(selectedLevelId);
+    setEnrollmentSuccessOpen(true);
+  } catch (enrollmentError) {
+    console.error(
+      "Failed to enroll in paid batch:",
+      enrollmentError,
+    );
+  } finally {
+    setEnrolling(false);
+  }
+};
+
 
   const shareBatch = async () => {
     const shareData = {
@@ -614,13 +818,25 @@ const isMultiplePlan =
       {/* WHITE BATCH HEADER */}
       <div className="fixed left-0 right-0 top-12 z-40 border-b border-[#e4e4e7] bg-white shadow-sm lg:left-[250px]">
         <div className="mx-auto flex h-[58px] max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link
-            href="/dashboard/batches"
-            className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#292929] transition hover:text-[#5424ad]"
-          >
-            <BackIcon />
-            Back
-          </Link>
+         <button
+  type="button"
+  onClick={() => {
+    if (from === "study") {
+      router.push(
+        `/dashboard/study?batchId=${encodeURIComponent(
+          batchId,
+        )}`,
+      );
+      return;
+    }
+
+    router.push("/dashboard/batches");
+  }}
+  className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#292929] transition hover:text-[#5424ad]"
+>
+  <BackIcon />
+  Back
+</button>
 
           <div className="flex items-center gap-2 rounded-full border border-[#e1e1e4] bg-white px-3.5 py-2 shadow-sm">
             <Image
@@ -633,13 +849,7 @@ const isMultiplePlan =
             />
 
             <span className="text-sm font-bold text-[#202020]">
-              {getNumber(
-                (
-                  auth.currentUser as unknown as {
-                    totalXP?: number;
-                  } | null
-                )?.totalXP,
-              ).toLocaleString()}{" "}
+              {getNumber(userProfile?.totalXP).toLocaleString()} XP
               XP
             </span>
           </div>
@@ -874,73 +1084,117 @@ const isMultiplePlan =
   </div>
 </div>
 
-                      {/* CALLOUT */} 
-            <button 
-              type="button" 
-              className="mt-3 flex w-full items-center gap-3 rounded-[12px] border border-[#e1d8f4] bg-[#f7f3ff] px-4 py-3 text-left transition hover:bg-[#f0e9ff]" 
-            > 
-              <PlayIcon /> 
- 
-              <div> 
-                <p className="text-sm font-bold text-[#27202f]"> 
-                  Discover the benefits 
-                </p> 
- 
-                <p className="text-xs text-[#766b80]"> 
-                  Learn what this plan includes 
-                </p> 
-              </div> 
-            </button> 
- 
-          </section> 
- 
+                      {/* CALLOUT */}
+            <button
+              type="button"
+              className="mt-3 flex w-full items-center gap-3 rounded-[12px] border border-[#e1d8f4] bg-[#f7f3ff] px-4 py-3 text-left transition hover:bg-[#f0e9ff]"
+            >
+              <PlayIcon />
+
+              <div>
+                <p className="text-sm font-bold text-[#27202f]">
+                  Discover the benefits
+                </p>
+
+                <p className="text-xs text-[#766b80]">
+                  Learn what this plan includes
+                </p>
+              </div>
+            </button>
+
+          </section>
+
             ) : isFreeBatch ? (
 
           <section className="overflow-hidden rounded-[20px] border border-[#e3e3e6] bg-white shadow-sm">
             {/* FREE BATCH FEATURES */}
-            {/* GRADIENT HEADER */} 
-            <div className="relative overflow-hidden bg-gradient-to-r from-[#5424ad] via-[#7c3aed] to-[#a855f7] px-5 py-5 sm:px-6"> 
-              <div className="relative z-10"> 
-                <p className="text-xs font-bold uppercase tracking-[0.08em] text-white/75"> 
-                  Batch Features 
-                </p> 
- 
-                <h2 className="mt-1 text-[22px] font-bold tracking-[-0.02em] text-white"> 
-                  {batch.name} Includes 
-                </h2> 
-              </div> 
- 
-              <div className="pointer-events-none absolute -right-10 -top-16 h-36 w-36 rounded-full bg-white/10 blur-2xl" /> 
-              <div className="pointer-events-none absolute -bottom-20 left-1/3 h-40 w-40 rounded-full bg-white/10 blur-3xl" /> 
-            </div> 
- 
-            {/* FEATURES */} 
-            <div className="grid gap-px bg-[#e8e8eb] sm:grid-cols-2"> 
-              {displayFeatures.length > 0 ? ( 
-                displayFeatures.map((feature, index) => ( 
-                  <div 
-                    key={`${feature}-${index}`} 
-                    className="flex items-center gap-3 bg-white px-5 py-4 text-sm font-semibold text-[#242424] transition hover:bg-[#faf8ff] sm:px-6" 
-                  > 
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#5424ad] to-[#a855f7] text-white shadow-sm"> 
-                      <CheckIcon /> 
-                    </span> 
- 
-                    <span className="leading-6"> 
-                      {feature} 
-                    </span> 
-                  </div> 
-                )) 
-              ) : ( 
-                <div className="px-5 py-5 text-sm text-[#777] sm:col-span-2"> 
-                  No features added yet. 
-                </div> 
-              )} 
-            </div> 
- 
-          </section> 
- 
-        ) : null} 
+            {/* GRADIENT HEADER */}
+            <div className="relative overflow-hidden bg-gradient-to-r from-[#5424ad] via-[#7c3aed] to-[#a855f7] px-5 py-5 sm:px-6">
+              <div className="relative z-10">
+                <p className="text-xs font-bold uppercase tracking-[0.08em] text-white/75">
+                  Batch Features
+                </p>
+
+                <h2 className="mt-1 text-[22px] font-bold tracking-[-0.02em] text-white">
+                  {batch.name} Includes
+                </h2>
+              </div>
+
+              <div className="pointer-events-none absolute -right-10 -top-16 h-36 w-36 rounded-full bg-white/10 blur-2xl" />
+              <div className="pointer-events-none absolute -bottom-20 left-1/3 h-40 w-40 rounded-full bg-white/10 blur-3xl" />
+            </div>
+
+            {/* FEATURES */}
+            <div className="grid gap-px bg-[#e8e8eb] sm:grid-cols-2">
+              {displayFeatures.length > 0 ? (
+                displayFeatures.map((feature, index) => (
+                  <div
+                    key={`${feature}-${index}`}
+                    className="flex items-center gap-3 bg-white px-5 py-4 text-sm font-semibold text-[#242424] transition hover:bg-[#faf8ff] sm:px-6"
+                  >
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#5424ad] to-[#a855f7] text-white shadow-sm">
+                      <CheckIcon />
+                    </span>
+
+                    <span className="leading-6">
+                      {feature}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <div className="px-5 py-5 text-sm text-[#777] sm:col-span-2">
+                  No features added yet.
+                </div>
+              )}
+            </div>
+
+          </section>
+
+            ) : (
+          <section className="overflow-hidden rounded-[20px] border border-[#e3e3e6] bg-white shadow-sm">
+            {/* SINGLE PAID BATCH FEATURES */}
+
+            {/* GRADIENT HEADER */}
+            <div className="relative overflow-hidden bg-gradient-to-r from-[#5424ad] via-[#7c3aed] to-[#a855f7] px-5 py-5 sm:px-6">
+              <div className="relative z-10">
+                <p className="text-xs font-bold uppercase tracking-[0.08em] text-white/75">
+                  Batch Features
+                </p>
+
+                <h2 className="mt-1 text-[22px] font-bold tracking-[-0.02em] text-white">
+                  {batch.name} Includes
+                </h2>
+              </div>
+
+              <div className="pointer-events-none absolute -right-10 -top-16 h-36 w-36 rounded-full bg-white/10 blur-2xl" />
+              <div className="pointer-events-none absolute -bottom-20 left-1/3 h-40 w-40 rounded-full bg-white/10 blur-3xl" />
+            </div>
+
+            {/* FEATURES */}
+            <div className="grid gap-px bg-[#e8e8eb] sm:grid-cols-2">
+              {displayFeatures.length > 0 ? (
+                displayFeatures.map((feature, index) => (
+                  <div
+                    key={`${feature}-${index}`}
+                    className="flex items-center gap-3 bg-white px-5 py-4 text-sm font-semibold text-[#242424] transition hover:bg-[#faf8ff] sm:px-6"
+                  >
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#5424ad] to-[#a855f7] text-white shadow-sm">
+                      <CheckIcon />
+                    </span>
+
+                    <span className="leading-6">
+                      {feature}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <div className="px-5 py-5 text-sm text-[#777] sm:col-span-2">
+                  No features added yet.
+                </div>
+              )}
+            </div>
+          </section>
+        )}
 
         {/* DESCRIPTION + THIS BATCH INCLUDES */}
         <section className="mt-6 rounded-[20px] border border-[#e3e3e6] bg-white p-5 shadow-sm sm:p-6">
@@ -1124,13 +1378,13 @@ const isMultiplePlan =
                         {subject.topics.map(
                           (topic, topicIndex) => (
                             <div
-                              key={`${topic}-${topicIndex}`}
+                              key={`${topic.id}-${topicIndex}`}
                               className="flex items-center gap-2 rounded-lg bg-[#faf8ff] px-3 py-2.5"
                             >
                               <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#7c4dff]" />
 
                               <span className="text-sm text-[#555]">
-                                {topic}
+                                {topic.name}
                               </span>
                             </div>
                           ),
@@ -1225,142 +1479,202 @@ const isMultiplePlan =
         )}
       </div>
 
-      <div className="bg-[#faf9fc] p-5">
-       {isMultiplePlan &&
-selectedLevel ? (
-          <>
-            <div className="flex items-end justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-[#888]">
-                 {selectedLevel?.name ?? "Plan"} Plan
-                </p>
+     <div className="bg-[#faf9fc] p-5">
+  {isMultiplePlan && selectedLevel ? (
+    <>
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#888]">
+            {selectedLevel?.name ?? "Plan"} Plan
+          </p>
 
-                <div className="mt-1 flex flex-wrap items-baseline gap-2">
-                  <span className="text-2xl font-extrabold text-[#111]">
-                    NPR{" "}
-                    {primaryPricing.price.toLocaleString()}
-                  </span>
+          <div className="mt-1 flex flex-wrap items-baseline gap-2">
+            <span className="text-2xl font-extrabold text-[#111]">
+              NPR{" "}
+              {primaryPricing.price.toLocaleString()}
+            </span>
 
-                  {primaryPricing.originalPrice >
-                    0 && (
-                    <span className="text-sm text-[#888] line-through">
-                      NPR{" "}
-                      {primaryPricing.originalPrice.toLocaleString()}
-                    </span>
-                  )}
-                </div>
+            {primaryPricing.originalPrice > 0 && (
+              <span className="text-sm text-[#888] line-through">
+                NPR{" "}
+                {primaryPricing.originalPrice.toLocaleString()}
+              </span>
+            )}
+          </div>
 
-                {primaryPricing.discount >
-                  0 && (
-                  <span className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-[#e8f7ed] px-2.5 py-1.5 text-[11px] font-bold text-[#159447]">
-                    <Image
-                      src="/price-discount.svg"
-                      alt=""
-                      width={20}
-                      height={20}
-                      unoptimized
-                    />
-                    {primaryPricing.discount}% OFF
-                  </span>
-                )}
-              </div>
+          {primaryPricing.discount > 0 && (
+            <span className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-[#e8f7ed] px-2.5 py-1.5 text-[11px] font-bold text-[#159447]">
+              <Image
+                src="/price-discount.svg"
+                alt=""
+                width={20}
+                height={20}
+                unoptimized
+              />
+              {primaryPricing.discount}% OFF
+            </span>
+          )}
+        </div>
 
-              <button
-                type="button"
-                className="flex h-11 shrink-0 items-center justify-center rounded-[8px] bg-[#5b2bb8] px-5 text-sm font-bold text-white transition hover:bg-[#4d239c]"
-              >
-                {enrolled
-                  ? "Enrolled"
-                  : "Buy Now"}
-              </button>
-            </div>
-          </>
-   ) : isFreeBatch ? (
-  enrolled ? (
-    <button
-      type="button"
-      disabled
-      className="flex h-12 w-full items-center justify-center gap-2 rounded-[9px] bg-[#16a34a] text-sm font-extrabold text-white shadow-sm"
-    >
-      <CheckIcon />
-      Enrolled
-    </button>
-  ) : (
-    <div className="flex items-center justify-between gap-3">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-[#888]">
-          Batch Access
-        </p>
+        {/* =====================================================
+            BUTTON 1 — MULTI-LEVEL BATCH
+            Basic / Standard / Premium
+            Buy Now / Upgrade → Billing Page
+        ===================================================== */}
+        <button
+          type="button"
+          onClick={() => {
+            if (!selectedLevel || !batch.id) {
+              return;
+            }
 
-        <p className="mt-1 text-2xl font-extrabold text-[#111]">
-          FREE
-        </p>
+            window.location.href =
+              `/billing?batchId=${encodeURIComponent(
+                batch.id,
+              )}&levelId=${encodeURIComponent(
+                selectedLevel.id,
+              )}`;
+          }}
+          disabled={
+            enrolling ||
+            !selectedLevel ||
+            (
+              enrolledLevelId !== null &&
+              levelOrder.indexOf(
+                selectedLevel.id as
+                  (typeof levelOrder)[number],
+              ) <= purchasedLevelIndex
+            )
+          }
+          className="flex h-11 shrink-0 items-center justify-center rounded-[8px] bg-[#5b2bb8] px-5 text-sm font-bold text-white transition hover:bg-[#4d239c] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {enrolling
+            ? "Processing..."
+            : enrolledLevelId &&
+                levelOrder.indexOf(
+                  selectedLevel?.id as
+                    (typeof levelOrder)[number],
+                ) <= purchasedLevelIndex
+              ? "Enrolled"
+              : enrolledLevelId
+                ? "Upgrade"
+                : "Buy Now"}
+        </button>
       </div>
-
+    </>
+  ) : isFreeBatch ? (
+    enrolled ? (
       <button
         type="button"
-        onClick={() => {
-          void handleFreeEnrollment();
-        }}
-        disabled={enrolling}
-        className="flex h-11 shrink-0 items-center justify-center rounded-[8px] bg-[#5b2bb8] px-5 text-sm font-bold text-white transition hover:bg-[#4d239c] disabled:cursor-not-allowed disabled:opacity-60"
+        disabled
+        className="flex h-12 w-full items-center justify-center gap-2 rounded-[9px] bg-[#16a34a] text-sm font-extrabold text-white shadow-sm"
       >
-        {enrolling ? "Enrolling..." : "Enroll Now"}
+        <CheckIcon />
+        Enrolled
       </button>
-    </div>
-  )
-) : (
-  <div className="flex items-end justify-between gap-3">
-    <div>
-      <div className="flex flex-wrap items-baseline gap-2">
-        <span className="text-2xl font-extrabold text-[#111]">
-          NPR{" "}
-          {displayPricing.price.toLocaleString()}
-        </span>
+    ) : (
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#888]">
+            Batch Access
+          </p>
 
-        {displayPricing.originalPrice > 0 && (
-          <span className="text-sm text-[#888] line-through">
+          <p className="mt-1 text-2xl font-extrabold text-[#111]">
+            FREE
+          </p>
+        </div>
+
+       <button
+  type="button"
+  onClick={() => {
+    if (!batch.id) {
+      return;
+    }
+
+    window.location.href =
+      `/billing?batchId=${encodeURIComponent(
+        batch.id,
+      )}`;
+  }}
+  disabled={enrolling}
+  className="flex h-11 shrink-0 items-center justify-center rounded-[8px] bg-[#5b2bb8] px-5 text-sm font-bold text-white transition hover:bg-[#4d239c] disabled:cursor-not-allowed disabled:opacity-60"
+>
+  Enroll Now
+</button>
+      </div>
+    )
+  ) : (
+    <div className="flex items-end justify-between gap-3">
+      <div>
+        <div className="flex flex-wrap items-baseline gap-2">
+          <span className="text-2xl font-extrabold text-[#111]">
             NPR{" "}
-            {displayPricing.originalPrice.toLocaleString()}
+            {displayPricing.price.toLocaleString()}
+          </span>
+
+          {displayPricing.originalPrice > 0 && (
+            <span className="text-sm text-[#888] line-through">
+              NPR{" "}
+              {displayPricing.originalPrice.toLocaleString()}
+            </span>
+          )}
+        </div>
+
+        {displayPricing.discount > 0 && (
+          <span className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-[#e8f7ed] px-2.5 py-1.5 text-[11px] font-bold text-[#159447]">
+            <Image
+              src="/price-discount.svg"
+              alt=""
+              width={20}
+              height={20}
+              unoptimized
+            />
+            {displayPricing.discount}% OFF
           </span>
         )}
       </div>
 
-      {displayPricing.discount > 0 && (
-        <span className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-[#e8f7ed] px-2.5 py-1.5 text-[11px] font-bold text-[#159447]">
-          <Image
-            src="/price-discount.svg"
-            alt=""
-            width={20}
-            height={20}
-            unoptimized
-          />
-          {displayPricing.discount}% OFF
-        </span>
-      )}
+      {/* =====================================================
+          BUTTON 2 — SINGLE PAID BATCH
+          No Basic / Standard / Premium
+          Buy Now → Billing Page
+      ===================================================== */}
+      <button
+        type="button"
+        onClick={() => {
+          if (!batch.id) {
+            return;
+          }
+
+          window.location.href =
+            `/billing?batchId=${encodeURIComponent(
+              batch.id,
+            )}`;
+        }}
+        disabled={enrolling || enrolled}
+        className="flex h-11 shrink-0 items-center justify-center rounded-[8px] bg-[#5b2bb8] px-5 text-sm font-bold text-white transition hover:bg-[#4d239c] disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {enrolling
+          ? "Processing..."
+          : enrolled
+            ? "Enrolled"
+            : "Buy Now"}
+      </button>
     </div>
-
-    <button
-      type="button"
-      className="flex h-11 shrink-0 items-center justify-center rounded-[8px] bg-[#5b2bb8] px-5 text-sm font-bold text-white transition hover:bg-[#4d239c]"
-    >
-      {enrolled ? "Enrolled" : "Buy Now"}
-    </button>
-  </div>
-)}
-
-{isMultiplePlan &&
-  selectedLevel?.pricingOption ===
-    "Both" && (
-    <p className="mt-3 text-xs text-[#777]">
-      Monthly plan also available.
-    </p>
   )}
-            </div>
+
+  {isMultiplePlan &&
+    selectedLevel?.pricing?.pricingOption ===
+      "Both" && (
+      <p className="mt-3 text-xs text-[#777]">
+        Monthly plan also available.
+      </p>
+    )}
+</div>
         </div>
       </aside>
     </div>
-      
+
 {comparePlansOpen && (
   <div
     className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3 backdrop-blur-[3px] sm:p-5"
@@ -1460,7 +1774,7 @@ selectedLevel ? (
               },
             ];
 
-           
+
 
             const style =
               planStyles[index % planStyles.length];
@@ -1582,15 +1896,15 @@ selectedLevel ? (
               FEATURE ROWS
           ===================================================== */}
           {(() => {
-            const allFeatures = Array.from(
-              new Set(
-                levels.flatMap((level) =>
-                  Array.isArray(level.features)
-                    ? level.features
-                    : [],
-                ),
-              ),
-            );
+           const allFeatures = Array.from(
+  new Set(
+    levels.flatMap((level) =>
+      Array.isArray(level.featureIds)
+        ? level.featureIds
+        : [],
+    ),
+  ),
+);
 
             if (allFeatures.length === 0) {
               return (
@@ -1601,80 +1915,110 @@ selectedLevel ? (
             }
 
             return allFeatures.map(
-              (feature, featureIndex) => (
-                <div
-                  key={`${feature}-${featureIndex}`}
-                  className="grid grid-cols-[minmax(220px,1.5fr)_repeat(3,minmax(140px,1fr))] border-b border-[#2d3748] last:border-b-0"
-                >
-                  {/* FEATURE NAME */}
-                  <div className="flex items-center bg-[#12161e] px-5 py-4">
-                    <span className="text-sm font-semibold leading-5 text-[#e2e8f0]">
-                      {feature}
-                    </span>
-                  </div>
+  (feature, featureIndex) => (
+    <div
+      key={`${feature}-${featureIndex}`}
+      className="grid grid-cols-[minmax(220px,1.5fr)_repeat(3,minmax(140px,1fr))] border-b border-[#2d3748] last:border-b-0"
+    >
+      {/* FEATURE NAME */}
+      <div className="flex items-center bg-[#12161e] px-5 py-4">
+        <span className="text-sm font-semibold leading-5 text-[#e2e8f0]">
+          {featureMap[feature] ?? feature}
+        </span>
+      </div>
 
-                  {/* PLAN AVAILABILITY */}
-                  {levels.map((level) => {
-                    const included =
-                      Array.isArray(
-                        level.features,
-                      ) &&
-                      level.features.includes(
-                        feature,
-                      );
+      {/* PLAN AVAILABILITY */}
+      {levels.map((level) => {
+        const levelOrder = [
+          "basic",
+          "standard",
+          "premium",
+        ] as const;
 
-                    const selected =
-                      selectedPlan === level.name;
+        const levelIndex =
+          levelOrder.indexOf(
+            level.id as (typeof levelOrder)[number],
+          );
 
-                    return (
-                      <div
-                        key={`${level.name}-${feature}`}
-                        className={`flex items-center justify-center border-l border-dashed px-3 py-4 transition ${
-                          selected
-                            ? "border-[#a3e635]/30 bg-white/[0.035]"
-                            : "border-white/10 bg-[#12161e]"
-                        }`}
-                      >
-                        {included ? (
-                          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#22c55e]/15 text-[#22c55e]">
-                            <svg
-                              className="h-4 w-4"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              aria-hidden="true"
-                            >
-                              <path
-                                d="M5 12.5L10 17.5L19 7"
-                                stroke="currentColor"
-                                strokeWidth="3"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              />
-                            </svg>
-                          </span>
-                        ) : (
-                          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#ef4444]/10 text-[#ef4444]">
-                            <svg
-                              className="h-4 w-4"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              aria-hidden="true"
-                            >
-                              <path
-                                d="M7 7L17 17M17 7L7 17"
-                                stroke="currentColor"
-                                strokeWidth="2.5"
-                                strokeLinecap="round"
-                              />
-                            </svg>
-                          </span>
-                        )}
-                      </div>
+        const cumulativeFeatureIds =
+          levelIndex === -1
+            ? level.featureIds ?? []
+            : levels
+                .filter((previousLevel) => {
+                  const previousIndex =
+                    levelOrder.indexOf(
+                      previousLevel.id as
+                        (typeof levelOrder)[number],
                     );
-                  })}
-                </div>
-              ),
-            );
+
+                  return (
+                    previousIndex >= 0 &&
+                    previousIndex <= levelIndex
+                  );
+                })
+                .flatMap((previousLevel) =>
+                  Array.isArray(
+                    previousLevel.featureIds,
+                  )
+                    ? previousLevel.featureIds
+                    : [],
+                );
+
+        const included =
+          cumulativeFeatureIds.includes(feature);
+
+        const selected =
+          selectedPlan === level.name;
+
+        return (
+          <div
+            key={`${level.name}-${feature}`}
+            className={`flex items-center justify-center border-l border-dashed px-3 py-4 transition ${
+              selected
+                ? "border-[#a3e635]/30 bg-white/[0.035]"
+                : "border-white/10 bg-[#12161e]"
+            }`}
+          >
+            {included ? (
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#22c55e]/15 text-[#22c55e]">
+                <svg
+                  className="h-4 w-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M5 12.5L10 17.5L19 7"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </span>
+            ) : (
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#ef4444]/10 text-[#ef4444]">
+                <svg
+                  className="h-4 w-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M7 7L17 17M17 7L7 17"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  ),
+);
           })()}
         </div>
       </div>
